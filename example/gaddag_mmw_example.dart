@@ -1,7 +1,7 @@
 import 'package:gaddag_mmw/gaddag_mmw.dart';
 
 void main() {
-  GADDAG gaddag = GADDAG();
+  Gaddag gaddag = Gaddag();
   gaddag.addWord('cat');
   print(gaddag.contains('cat'));
 }

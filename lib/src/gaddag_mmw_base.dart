@@ -1,4 +1,4 @@
-/// A GADDAG is a specialized Trie, a data structure used to store strings for efficient lookup of
+/// A GADDAG is a specialized graph, a data structure used to store strings for efficient lookup of
 /// the existence of a string starting from any character within it.
 /// This is achieved by storing both a (non-empty) reversed prefix, separator value,
 /// and suffix for each letter in the word.
@@ -11,125 +11,200 @@
 /// alpxe+in
 /// ialpxe+n
 /// nialpxe
-class GADDAGNode {
-  final Map<String, GADDAGNode> children = {};
+///
+
+class GaddagNode {
+  // Using a Map for sparse edges. For production builds with fixed dictionaries,
+  // this can later be flattened into parallel arrays to drop object overhead entirely.
+  Map<int, GaddagNode>? edges;
   bool isTerminal = false;
+
+  // Cached hash to speed up the minimization phase
+  int? _cachedHash;
+
+  GaddagNode();
+
+  GaddagNode putIfAbsent(int charCode) {
+    edges ??= {};
+    return edges!.putIfAbsent(charCode, () => GaddagNode());
+  }
+
+  GaddagNode? get(int charCode) => edges?[charCode];
+
+  /// Structural equality: Two nodes are equivalent if they have the same
+  /// terminal status and their outgoing edges point to the exact same child nodes.
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! GaddagNode) return false;
+    if (isTerminal != other.isTerminal) return false;
+
+    final thisEdges = edges;
+    final otherEdges = other.edges;
+
+    if (thisEdges == null && otherEdges == null) return true;
+    if (thisEdges == null || otherEdges == null) return false;
+    if (thisEdges.length != otherEdges.length) return false;
+
+    for (var entry in thisEdges.entries) {
+      if (!identical(otherEdges[entry.key], entry.value)) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode {
+    if (_cachedHash != null) return _cachedHash!;
+
+    int hash = isTerminal ? 1 : 0;
+    if (edges != null) {
+      // Sort keys to ensure stable structural hashing
+      var keys = edges!.keys.toList(growable: false)..sort();
+      for (var k in keys) {
+        // Use the identity hash of the child, as children will already
+        // be canonicalized when the parent's hash is calculated.
+        hash = Object.hash(hash, k, identityHashCode(edges![k]));
+      }
+    }
+    _cachedHash = hash;
+    return hash;
+  }
 }
 
-class GADDAG {
-  final GADDAGNode root = GADDAGNode();
-  static const String separator = '+';
+class Gaddag {
+  GaddagNode root;
+
+  // Using '+' (0x2B) as the delimiter. You can use any integer outside your alphabet.
+  static const int delimiter = 0x2B;
+
+  Gaddag() : root = GaddagNode();
 
   /// Adds a word to the GADDAG.
+  /// Generates the paths: Reverse(Prefix) + Delimiter + Suffix
   void addWord(String word) {
-    if (word.isEmpty) return;
+    List<int> codes = word.codeUnits;
+    int n = codes.length;
 
-    List<String> chars = word.split('');
-    // Insert a path for every character in the word
-    for (int i = 0; i < chars.length; i++) {
-      _addPath(chars, i);
+    for (int i = 0; i < n; i++) {
+      GaddagNode current = root;
+
+      // 1. Insert the prefix in reverse
+      for (int j = i; j >= 0; j--) {
+        current = current.putIfAbsent(codes[j]);
+      }
+
+      // 2. Insert the delimiter
+      current = current.putIfAbsent(delimiter);
+
+      // 3. Insert the remaining suffix
+      for (int j = i + 1; j < n; j++) {
+        current = current.putIfAbsent(codes[j]);
+      }
+
+      // Mark the end of this specific GADDAG path
+      current.isTerminal = true;
     }
   }
 
-  void _addPath(List<String> chars, int startIndex) {
-    GADDAGNode currentNode = root;
+  /// Compresses the Trie into a minimal DAWG.
+  /// Call this ONCE after all words have been added.
+  void minimize() {
+    var uniqueNodes = <GaddagNode, GaddagNode>{};
+    root = _minimizeNode(root, uniqueNodes);
+  }
 
-    // 1. The character at the start index (the 'root' of this GADDAG path)
-    currentNode = _getOrCreateChild(currentNode, chars[startIndex]);
-
-    // 2. The reversed prefix (characters before startIndex, in reverse order)
-    for (int i = startIndex - 1; i >= 0; i--) {
-      currentNode = _getOrCreateChild(currentNode, chars[i]);
-    }
-
-    // 3. Separator and Suffix (characters after startIndex)
-    // The separator is only added if there is a suffix (i.e., we are not at the last character)
-    if (startIndex < chars.length - 1) {
-      currentNode = _getOrCreateChild(currentNode, separator);
-      for (int i = startIndex + 1; i < chars.length; i++) {
-        currentNode = _getOrCreateChild(currentNode, chars[i]);
+  /// Post-order traversal: minimizes children before minimizing the parent.
+  GaddagNode _minimizeNode(GaddagNode node, Map<GaddagNode, GaddagNode> uniqueNodes) {
+    if (node.edges != null) {
+      for (var entry in node.edges!.entries) {
+        node.edges![entry.key] = _minimizeNode(entry.value, uniqueNodes);
       }
     }
 
-    currentNode.isTerminal = true;
+    // After children are canonicalized, check if this node already exists
+    if (uniqueNodes.containsKey(node)) {
+      return uniqueNodes[node]!;
+    } else {
+      uniqueNodes[node] = node;
+      return node;
+    }
   }
 
-  GADDAGNode _getOrCreateChild(GADDAGNode node, String char) {
-    return node.children.putIfAbsent(char, () => GADDAGNode());
-  }
-
-  /// Checks if the GADDAG contains the given word.
-  /// This checks for the specific path corresponding to the word starting at the first character,
-  /// which is consistent with the standard Trie lookup if we treat GADDAG as containing the word.
+  /// Checks if a complete word exists in the GADDAG.
   bool contains(String word) {
     if (word.isEmpty) return false;
-    
-    // To check for a word "W", we can look for the path corresponding to its first character.
-    // For "explain", this is "e+xplain".
-    
-    GADDAGNode? node = root.children[word[0]];
-    if (node == null) return false;
-    
-    if (word.length > 1) {
-      node = node.children[separator];
-      if (node == null) return false;
-      
-      for (int i = 1; i < word.length; i++) {
-        node = node!.children[word[i]];
-        if (node == null) return false;
-      }
+
+    List<int> codes = word.codeUnits;
+    GaddagNode? current = root;
+
+    // To verify a full word, we follow the path of its completely reversed 
+    // prefix (which is just the reversed word) followed by the delimiter.
+    for (int i = codes.length - 1; i >= 0; i--) {
+      current = current?.get(codes[i]);
+      if (current == null) return false;
     }
-    
-    return node!.isTerminal;
+
+    // Step into the delimiter node
+    current = current?.get(delimiter);
+
+    // If we reached it and it's terminal, the word exists.
+    return current?.isTerminal ?? false;
   }
 
-  /// Finds words that contain some substring
-  List<String> findWordsWithSubstring(String substring) {
-    if (substring.isEmpty) return [];
+  /// Returns a Set of all words that contain the given substring.
+  /// Returns an empty set if the substring is not found.
+  Set<String> findWordsWithSubstring(String substring) {
+    if (substring.isEmpty) return {};
 
-    GADDAGNode? currentNode = root;
-    List<String> path = [];
+    List<int> codes = substring.codeUnits;
+    GaddagNode? current = root;
+    List<int> currentPath = [];
 
-    // 1. Traverse the reversed substring.
-    // If we search for "bcd", we look for the path d -> c -> b.
-    // This path leads to the state where we have matched "bcd" backwards.
-    for (int i = substring.length - 1; i >= 0; i--) {
-      String char = substring[i];
-      currentNode = currentNode?.children[char];
-      if (currentNode == null) {
-        return []; // Substring not found in any word
-      }
-      path.add(char);
+    // 1. Trace the reversed substring from the root.
+    // If the substring exists anywhere in the dictionary, this reverse 
+    // trace will successfully lead us to a valid node.
+    for (int i = codes.length - 1; i >= 0; i--) {
+      current = current?.get(codes[i]);
+      if (current == null) return {}; // Substring doesn't exist in any word
+      currentPath.add(codes[i]);
     }
 
-    // 2. From this node, find all terminal nodes via DFS.
+    // 2. Perform a Depth-First Search (DFS) from this node to find all valid words.
+    // We use a Set because words containing the substring multiple times 
+    // (e.g., "A" in "BANANA") will be discovered through multiple prefix paths.
     Set<String> results = {};
-    if (currentNode != null) {
-      _dfsCollectWords(currentNode, path, results);
-    }
-
-    return results.toList();
+    _dfsCollectWords(current!, currentPath, results);
+    return results;
   }
 
-  void _dfsCollectWords(GADDAGNode node, List<String> currentPath, Set<String> results) {
+  /// Recursive helper to traverse the DAWG and reconstruct words.
+  void _dfsCollectWords(GaddagNode node, List<int> pathChars, Set<String> results) {
     if (node.isTerminal) {
-      results.add(_reconstructWord(currentPath));
+      // Find where our prefix trace ended and the suffix began
+      int delimIndex = pathChars.indexOf(delimiter);
+
+      if (delimIndex != -1) {
+        // Characters before the delimiter are the reversed prefix
+        Iterable<int> revPrefix = pathChars.take(delimIndex);
+        // Characters after the delimiter are the standard suffix
+        Iterable<int> suffix = pathChars.skip(delimIndex + 1);
+
+        // Reconstruct the full word: Reverse(revPrefix) + suffix
+        String word = String.fromCharCodes([
+          ...revPrefix.toList(growable: false).reversed,
+          ...suffix
+        ]);
+        results.add(word);
+      }
     }
 
-    node.children.forEach((char, childNode) {
-      currentPath.add(char);
-      _dfsCollectWords(childNode, currentPath, results);
-      currentPath.removeLast();
-    });
-  }
-
-  String _reconstructWord(List<String> path) {
-    int sepIndex = path.indexOf(separator);
-    if (sepIndex == -1) {
-      return path.reversed.join('');
+    // Continue DFS down all available edges
+    if (node.edges != null) {
+      for (var entry in node.edges!.entries) {
+        pathChars.add(entry.key);
+        _dfsCollectWords(entry.value, pathChars, results);
+        pathChars.removeLast(); // Backtrack
+      }
     }
-    String prefix = path.sublist(0, sepIndex).reversed.join('');
-    String suffix = path.sublist(sepIndex + 1).join('');
-    return prefix + suffix;
-  }
+  }  
 }
