@@ -154,8 +154,6 @@ class Gaddag {
   /// Returns a Set of all words that contain the given substring.
   /// Returns an empty set if the substring is not found.
   Set<String> findWordsWithSubstring(String substring) {
-    if (substring.isEmpty) return {};
-
     List<int> codes = substring.codeUnits;
     GaddagNode? current = root;
     List<int> currentPath = [];

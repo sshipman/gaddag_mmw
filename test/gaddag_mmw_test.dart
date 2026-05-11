@@ -127,7 +127,26 @@ void main() {
 
       expect(gaddag.contains('cat'), isTrue);
       expect(gaddag.contains('caet'), isFalse);
+
     });
 
+    test('only get out what we put in', () {
+      // see https://jbp.dev/blog/dawg-basics.html for origin of test case
+
+      //intentionally not alphabetical.  SHOULDN'T MATTER
+
+      List<String> words = ['cat', 'fact', 'facet', 'car', 'care', 'caret', 'faucet', 'vicar'];
+      for (String word in words){
+        gaddag.addWord(word);
+      }
+      gaddag.minimize();
+
+      var results = gaddag.findWordsWithSubstring('');
+
+      expect(results.length == words.length, isTrue);
+      for (String word in words) {
+        expect(results.contains(word), isTrue);
+      }
+    });
   });
 }
