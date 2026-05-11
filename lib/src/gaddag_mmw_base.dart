@@ -1,17 +1,5 @@
-/// A GADDAG is a specialized graph, a data structure used to store strings for efficient lookup of
-/// the existence of a string starting from any character within it.
-/// This is achieved by storing both a (non-empty) reversed prefix, separator value,
-/// and suffix for each letter in the word.
-///
-/// For example, the word "explain" will be stored with all of the following paths
-/// e+xplain
-/// xe+plain
-/// pxe+lain
-/// lpxe+ain
-/// alpxe+in
-/// ialpxe+n
-/// nialpxe
-///
+
+import 'package:meta/meta.dart';
 
 class GaddagNode {
   // Using a Map for sparse edges. For production builds with fixed dictionaries,
@@ -94,7 +82,9 @@ class Gaddag {
       }
 
       // 2. Insert the delimiter
-      current = current.putIfAbsent(delimiter);
+      if (i+1 < n) {
+        current = current.putIfAbsent(delimiter);
+      }
 
       // 3. Insert the remaining suffix
       for (int j = i + 1; j < n; j++) {
@@ -145,7 +135,7 @@ class Gaddag {
     }
 
     // Step into the delimiter node
-    current = current?.get(delimiter);
+    //current = current?.get(delimiter);
 
     // If we reached it and it's terminal, the word exists.
     return current?.isTerminal ?? false;
@@ -175,6 +165,25 @@ class Gaddag {
     return results;
   }
 
+  @visibleForTesting
+  int countNodes() {
+    // Set.identity() ignores your operator == and hashCode overrides,
+    // counting the actual distinct objects in the heap.
+    final seen = Set<GaddagNode>.identity();
+    _dfsCountNodes(root, seen);
+    return seen.length;
+  }
+
+  void _dfsCountNodes(GaddagNode node, Set<GaddagNode> seen) {
+    if (!seen.add(node)) return; // .add returns false if already present
+
+    final edges = node.edges;
+    if (edges != null) {
+      for (final child in edges.values) {
+        _dfsCountNodes(child, seen);
+      }
+    }
+  }
   /// Recursive helper to traverse the DAWG and reconstruct words.
   void _dfsCollectWords(GaddagNode node, List<int> pathChars, Set<String> results) {
     if (node.isTerminal) {
@@ -193,6 +202,8 @@ class Gaddag {
           ...suffix
         ]);
         results.add(word);
+      } else {
+        results.add(String.fromCharCodes(pathChars.reversed));
       }
     }
 

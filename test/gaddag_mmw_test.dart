@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:gaddag_mmw/gaddag_mmw.dart';
 import 'package:test/test.dart';
 
@@ -52,7 +54,7 @@ void main() {
       
       expect(hasPath('c+at'), isTrue, reason: 'Should contain path c+at');
       expect(hasPath('ac+t'), isTrue, reason: 'Should contain path ac+t');
-      expect(hasPath('tac+'), isTrue, reason: 'Should contain path tac');
+      expect(hasPath('tac'), isTrue, reason: 'Should contain path tac');
     });
 
     test('addWord handles multiple words', () {
@@ -147,6 +149,36 @@ void main() {
       for (String word in words) {
         expect(results.contains(word), isTrue);
       }
+    });
+
+    test("load an entire dictionary", () async {
+      final file = File('test/assets/enable.txt');
+      final content = await file.readAsString();
+      List<String> words = content.split('\n');
+      for (String word in words){
+        gaddag.addWord(word);
+      }
+      gaddag.minimize();
+
+      var results = gaddag.findWordsWithSubstring('');
+
+      expect(results.length == words.length, isTrue);
+      for (String word in words) {
+        expect(results.contains(word), isTrue);
+      }
+    });
+
+    test("minimize minimizes", () async {
+      final file = File('test/assets/enable.txt');
+      final content = await file.readAsString();
+      List<String> words = content.split('\n');
+      for (String word in words){
+        gaddag.addWord(word);
+      }
+      int nodesCountBefore = gaddag.countNodes();
+      gaddag.minimize();
+      int nodesCountAfter = gaddag.countNodes();
+      expect(nodesCountAfter < nodesCountBefore / 2, isTrue);
     });
   });
 }
