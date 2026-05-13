@@ -49,9 +49,37 @@ void main() {
           }
           currentNode = currentNode.get(char)!;
         }
-        return currentNode.isTerminal;
+        return currentNode.terminal;
       }
       
+      expect(hasPath('c+at'), isTrue, reason: 'Should contain path c+at');
+      expect(hasPath('ac+t'), isTrue, reason: 'Should contain path ac+t');
+      expect(hasPath('tac'), isTrue, reason: 'Should contain path tac');
+    });
+
+    test('can navigate using Dawg/DawgWalker interface', () {
+      // "cat"
+      // Paths:
+      // c+at
+      // ac+t
+      // tac
+
+      gaddag.addWord('cat');
+      gaddag.minimize();
+
+      // Helper to manually traverse the GADDAG
+      bool hasPath(String path) {
+        var currentNode = gaddag.getRootDawgWalker();
+        for (var i = 0; i < path.length; i++) {
+          var char = path[i];
+          if (currentNode.getChild(char) == null) {
+            return false;
+          }
+          currentNode = currentNode.getChild(char)!;
+        }
+        return currentNode.isTerminal();
+      }
+
       expect(hasPath('c+at'), isTrue, reason: 'Should contain path c+at');
       expect(hasPath('ac+t'), isTrue, reason: 'Should contain path ac+t');
       expect(hasPath('tac'), isTrue, reason: 'Should contain path tac');

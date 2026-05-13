@@ -1,11 +1,12 @@
-
+import 'dawg.dart';
+import 'dawg_walker.dart';
 import 'package:meta/meta.dart';
 
-class GaddagNode {
+class GaddagNode implements DawgWalker{
   // Using a Map for sparse edges. For production builds with fixed dictionaries,
   // this can later be flattened into parallel arrays to drop object overhead entirely.
   Map<int, GaddagNode>? edges;
-  bool isTerminal = false;
+  bool terminal = false;
 
   // Cached hash to speed up the minimization phase
   int? _cachedHash;
@@ -25,7 +26,7 @@ class GaddagNode {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! GaddagNode) return false;
-    if (isTerminal != other.isTerminal) return false;
+    if (terminal != other.terminal) return false;
 
     final thisEdges = edges;
     final otherEdges = other.edges;
@@ -44,7 +45,7 @@ class GaddagNode {
   int get hashCode {
     if (_cachedHash != null) return _cachedHash!;
 
-    int hash = isTerminal ? 1 : 0;
+    int hash = terminal ? 1 : 0;
     if (edges != null) {
       // Sort keys to ensure stable structural hashing
       var keys = edges!.keys.toList(growable: false)..sort();
@@ -57,15 +58,28 @@ class GaddagNode {
     _cachedHash = hash;
     return hash;
   }
+
+  @override
+  DawgWalker? getChild(String letter) {
+    return get(letter.codeUnitAt(0));
+  }
+
+  @override
+  bool isTerminal() {
+    return terminal;
+  }
 }
 
-class Gaddag {
+class Gaddag implements Dawg{
   GaddagNode root;
 
   // Using '+' (0x2B) as the delimiter. You can use any integer outside your alphabet.
   static const int delimiter = 0x2B;
 
   Gaddag() : root = GaddagNode();
+
+  @override
+  DawgWalker getRootDawgWalker() => root;
 
   /// Adds a word to the GADDAG.
   /// Generates the paths: Reverse(Prefix) + Delimiter + Suffix
@@ -92,7 +106,7 @@ class Gaddag {
       }
 
       // Mark the end of this specific GADDAG path
-      current.isTerminal = true;
+      current.terminal = true;
     }
   }
 
@@ -121,6 +135,7 @@ class Gaddag {
   }
 
   /// Checks if a complete word exists in the GADDAG.
+  @override
   bool contains(String word) {
     if (word.isEmpty) return false;
 
@@ -128,7 +143,7 @@ class Gaddag {
     GaddagNode? current = root;
 
     // To verify a full word, we follow the path of its completely reversed 
-    // prefix (which is just the reversed word) followed by the delimiter.
+    // prefix (which is just the reversed word).
     for (int i = codes.length - 1; i >= 0; i--) {
       current = current?.get(codes[i]);
       if (current == null) return false;
@@ -138,7 +153,7 @@ class Gaddag {
     //current = current?.get(delimiter);
 
     // If we reached it and it's terminal, the word exists.
-    return current?.isTerminal ?? false;
+    return current?.terminal ?? false;
   }
 
   /// Returns a Set of all words that contain the given substring.
@@ -186,7 +201,7 @@ class Gaddag {
   }
   /// Recursive helper to traverse the DAWG and reconstruct words.
   void _dfsCollectWords(GaddagNode node, List<int> pathChars, Set<String> results) {
-    if (node.isTerminal) {
+    if (node.terminal) {
       // Find where our prefix trace ended and the suffix began
       int delimIndex = pathChars.indexOf(delimiter);
 
@@ -215,5 +230,6 @@ class Gaddag {
         pathChars.removeLast(); // Backtrack
       }
     }
-  }  
+  }
+
 }

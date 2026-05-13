@@ -14,3 +14,6 @@
 library;
 
 export 'src/gaddag_mmw_base.dart';
+export 'src/hot_dawg.dart';
+export 'src/dawg_walker.dart';
+export 'src/dawg.dart';
